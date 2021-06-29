@@ -79,6 +79,7 @@ var shaderFrag = [
     "uniform vec4 uSolidColor;",
     "uniform bool uOrientationText;",
     "uniform bool uRuler;",
+    "uniform bool uSphere;",
     "uniform sampler2D uSampler;",
     "uniform float uAlpha;",
 
@@ -109,6 +110,9 @@ var shaderFrag = [
     "       gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);",
     "    } else if (uRuler) {",
     "       gl_FragColor = vec4(1.0, 0.078, 0.576, 1.0);",
+    "    } else if (uSphere) {",
+    "       //gl_FragColor = vec4(0.078, 1.0, 0.2, 1.0);",
+    "       gl_FragColor = fragmentColor;",
     "    } else if (uOrientationText) {",
     "        vec4 textureColor = texture2D(uSampler, vec2(vTextureCoord.s, vTextureCoord.t));",
     "        if (textureColor.a > 0.0) {",
@@ -210,6 +214,8 @@ papaya.viewer.ScreenSurface = papaya.viewer.ScreenSurface || function (baseVolum
     this.rulerPoints = null;
     this.grabbedRulerPoint = -1;
 
+    // this.spherePoints = new Float32Array(3);
+
     this.processParams(params);
 };
 
@@ -228,7 +234,9 @@ papaya.viewer.ScreenSurface.ORIENTATION_SIZE = 10;
 papaya.viewer.ScreenSurface.RULER_COLOR = [1, 0.078, 0.576];
 papaya.viewer.ScreenSurface.RULER_NUM_LINES = 25;
 papaya.viewer.ScreenSurface.RULER_RADIUS = 1;
-
+// papaya.viewer.ScreenSurface.SPHERE_COLOR = [0.078, 1.0, 0.2];
+papaya.viewer.ScreenSurface.SPHERE_NUM_LINES = 25;
+papaya.viewer.ScreenSurface.SPHERE_RADIUS = 25;
 
 /*** Static Variables ***/
 
@@ -293,6 +301,7 @@ papaya.viewer.ScreenSurface.initShaders = function (gl) {
     shaderProgram.samplerUniform = gl.getUniformLocation(shaderProgram, "uSampler");
     shaderProgram.ruler = gl.getUniformLocation(shaderProgram, "uRuler");
     shaderProgram.alphaVal = gl.getUniformLocation(shaderProgram, "uAlpha");
+    shaderProgram.sphere = gl.getUniformLocation(shaderProgram, "uSphere");
 
     return shaderProgram;
 };
@@ -325,6 +334,7 @@ papaya.viewer.ScreenSurface.prototype.initialize = function () {
     this.calculateScaleFactor();
     this.initActivePlaneBuffers(this.context);
     this.initRulerBuffers(this.context);
+    this.initSpheresBuffers(this.context);
 
     mat4.multiply(this.centerMat, papaya.viewer.ScreenSurface.DEFAULT_ORIENTATION, this.tempMat);
     mat4.multiply(this.tempMat, this.centerMatInv, this.mouseRotCurrent);
@@ -487,28 +497,45 @@ papaya.viewer.ScreenSurface.prototype.initActivePlaneBuffers = function (gl) {
 };
 
 
-
 papaya.viewer.ScreenSurface.prototype.initRulerBuffers = function (gl) {
     this.rulerPointData = this.makeSphere(papaya.viewer.ScreenSurface.RULER_NUM_LINES,
         papaya.viewer.ScreenSurface.RULER_NUM_LINES, papaya.viewer.ScreenSurface.RULER_RADIUS * this.scaleFactor);
 
-    this.sphereVertexPositionBuffer = gl.createBuffer();
-    this.sphereVertexPositionBuffer.itemSize = 3;
-    this.sphereVertexPositionBuffer.numItems = this.rulerPointData.vertices.length / 3;
+    this.rulerSphereVertexPositionBuffer = gl.createBuffer();
+    this.rulerSphereVertexPositionBuffer.itemSize = 3;
+    this.rulerSphereVertexPositionBuffer.numItems = this.rulerPointData.vertices.length / 3;
 
-    this.sphereNormalsPositionBuffer = gl.createBuffer();
-    this.sphereNormalsPositionBuffer.itemSize = 3;
-    this.sphereNormalsPositionBuffer.numItems = this.rulerPointData.normals.length / 3;
+    this.rulerSphereNormalsPositionBuffer = gl.createBuffer();
+    this.rulerSphereNormalsPositionBuffer.itemSize = 3;
+    this.rulerSphereNormalsPositionBuffer.numItems = this.rulerPointData.normals.length / 3;
 
-    this.sphereVertexIndexBuffer = gl.createBuffer();
-    this.sphereVertexIndexBuffer.itemSize = 1;
-    this.sphereVertexIndexBuffer.numItems = this.rulerPointData.indices.length;
+    this.rulerSphereVertexIndexBuffer = gl.createBuffer();
+    this.rulerSphereVertexIndexBuffer.itemSize = 1;
+    this.rulerSphereVertexIndexBuffer.numItems = this.rulerPointData.indices.length;
 
     this.rulerLineBuffer = gl.createBuffer();
     this.rulerLineBuffer.itemSize = 3;
     this.rulerLineBuffer.numItems = 2;
 };
 
+
+papaya.viewer.ScreenSurface.prototype.initSpheresBuffers = function (gl) {
+    this.spherePointData = this.makeSphere(papaya.viewer.ScreenSurface.SPHERE_NUM_LINES,
+        papaya.viewer.ScreenSurface.SPHERE_NUM_LINES, papaya.viewer.ScreenSurface.SPHERE_RADIUS * this.scaleFactor);
+
+    this.sphereSphereVertexPositionBuffer = gl.createBuffer();
+    this.sphereSphereVertexPositionBuffer.itemSize = 3;
+    this.sphereSphereVertexPositionBuffer.numItems = this.spherePointData.vertices.length / 3;
+
+    this.sphereSphereNormalsPositionBuffer = gl.createBuffer();
+    this.sphereSphereNormalsPositionBuffer.itemSize = 3;
+    this.sphereSphereNormalsPositionBuffer.numItems = this.spherePointData.normals.length / 3;
+
+    this.sphereSphereVertexIndexBuffer = gl.createBuffer();
+    this.sphereSphereVertexIndexBuffer.itemSize = 1;
+    this.sphereSphereVertexIndexBuffer.numItems = this.spherePointData.indices.length;
+
+};
 
 
 papaya.viewer.ScreenSurface.prototype.initPerspective = function () {
@@ -679,6 +706,10 @@ papaya.viewer.ScreenSurface.prototype.drawScene = function (gl) {
             gl.uniform1i(this.shaderProgram.activePlaneEdge, 0);
         }
 
+        if (this.isMainView()) {
+            this.drawSpheres(gl);
+        } 
+
         if (this.viewer.isShowingCrosshairs() && ((this.viewer.mainImage !== this) || this.viewer.toggleMainCrosshairs)) {
             if (this.needsUpdateActivePlanes) {
                 this.needsUpdateActivePlanes = false;
@@ -747,6 +778,7 @@ papaya.viewer.ScreenSurface.prototype.drawScene = function (gl) {
         } else {
             this.rulerPoints = null;
         }
+
     }
 
     // clean up
@@ -819,6 +851,65 @@ papaya.viewer.ScreenSurface.prototype.renderSurface = function (gl, index, isTra
 
 
 
+papaya.viewer.ScreenSurface.prototype.drawSpheres = function (gl) {
+    // console.log(this.spherePoints);
+    if (this.viewer.container.params['sphere_coordinates'] != null) {
+        gl.uniform1i(this.shaderProgram.sphere, 1);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+        var spheres = this.viewer.container.params['sphere_coordinates']
+        var radius = this.viewer.container.params['sphere_radius']
+        var colors = this.viewer.container.params['sphere_colors']
+        // this.drawOneSphere(gl, 0, 0, 0, radius);
+        for (var i_sphx = 0; i_sphx < spheres.length; i_sphx += 1) {
+            this.drawOneSphere(gl, spheres[i_sphx][0], spheres[i_sphx][1], spheres[i_sphx][2], radius, colors[i_sphx]);
+        }
+        // draw one sphere
+
+        gl.disable(gl.BLEND);
+        gl.uniform1i(this.shaderProgram.sphere, 0);
+        
+    }
+};
+
+papaya.viewer.ScreenSurface.prototype.drawOneSphere = function(gl, xLoc, yLoc, zLoc, radius, color) {
+    this.spherePointData = this.makeSphere(papaya.viewer.ScreenSurface.SPHERE_NUM_LINES,
+        papaya.viewer.ScreenSurface.SPHERE_NUM_LINES, radius * this.scaleFactor);
+    this.sphereSphereVertexPositionBuffer.numItems = this.spherePointData.vertices.length / 3;
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.sphereSphereVertexPositionBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.spherePointData.vertices), gl.STATIC_DRAW);
+
+    this.sphereSphereNormalsPositionBuffer.numItems = this.spherePointData.normals.length / 3;
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.sphereSphereNormalsPositionBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.spherePointData.normals), gl.STATIC_DRAW);
+
+    this.sphereSphereVertexIndexBuffer.numItems = this.spherePointData.indices.length;
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.sphereSphereVertexIndexBuffer);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(this.spherePointData.indices), gl.STATIC_DRAW);
+
+    gl.uniform1i(this.shaderProgram.hasSolidColor, 1);
+    gl.uniform4f(this.shaderProgram.solidColor, color[0], color[1], color[2], 1.0);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.sphereSphereVertexPositionBuffer);
+    gl.vertexAttribPointer(this.shaderProgram.vertexPositionAttribute, this.sphereSphereVertexPositionBuffer.itemSize,
+        gl.FLOAT, false, 0, 0);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.sphereSphereNormalsPositionBuffer);
+    gl.vertexAttribPointer(this.shaderProgram.vertexNormalAttribute, this.sphereSphereNormalsPositionBuffer.itemSize,
+        gl.FLOAT, false, 0, 0);
+
+    mat4.set(this.mvMatrix, this.tempMat);
+    mat4.translate(this.mvMatrix, [xLoc, yLoc, zLoc]);
+    this.applyMatrixUniforms(gl);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.sphereSphereVertexIndexBuffer);
+    gl.drawElements(gl.TRIANGLES, this.sphereSphereVertexIndexBuffer.numItems, gl.UNSIGNED_SHORT, 0);
+    mat4.set(this.tempMat, this.mvMatrix);
+    this.applyMatrixUniforms(gl);
+};
+
+
+
 papaya.viewer.ScreenSurface.prototype.drawRuler = function (gl) {
     var found = true;
 
@@ -850,35 +941,35 @@ papaya.viewer.ScreenSurface.prototype.drawRuler = function (gl) {
 
 
 papaya.viewer.ScreenSurface.prototype.drawRulerPoint = function (gl, xLoc, yLoc, zLoc) {
-    this.sphereVertexPositionBuffer.numItems = this.rulerPointData.vertices.length / 3;
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.sphereVertexPositionBuffer);
+    this.rulerSphereVertexPositionBuffer.numItems = this.rulerPointData.vertices.length / 3;
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.rulerSphereVertexPositionBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.rulerPointData.vertices), gl.STATIC_DRAW);
 
-    this.sphereNormalsPositionBuffer.numItems = this.rulerPointData.normals.length / 3;
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.sphereNormalsPositionBuffer);
+    this.rulerSphereNormalsPositionBuffer.numItems = this.rulerPointData.normals.length / 3;
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.rulerSphereNormalsPositionBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.rulerPointData.normals), gl.STATIC_DRAW);
 
-    this.sphereVertexIndexBuffer.numItems = this.rulerPointData.indices.length;
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.sphereVertexIndexBuffer);
+    this.rulerSphereVertexIndexBuffer.numItems = this.rulerPointData.indices.length;
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.rulerSphereVertexIndexBuffer);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(this.rulerPointData.indices), gl.STATIC_DRAW);
 
     gl.uniform1i(this.shaderProgram.hasSolidColor, 1);
     gl.uniform4f(this.shaderProgram.solidColor, papaya.viewer.ScreenSurface.RULER_COLOR[0],
         papaya.viewer.ScreenSurface.RULER_COLOR[1], papaya.viewer.ScreenSurface.RULER_COLOR[2], 1.0);
 
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.sphereVertexPositionBuffer);
-    gl.vertexAttribPointer(this.shaderProgram.vertexPositionAttribute, this.sphereVertexPositionBuffer.itemSize,
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.rulerSphereVertexPositionBuffer);
+    gl.vertexAttribPointer(this.shaderProgram.vertexPositionAttribute, this.rulerSphereVertexPositionBuffer.itemSize,
         gl.FLOAT, false, 0, 0);
 
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.sphereNormalsPositionBuffer);
-    gl.vertexAttribPointer(this.shaderProgram.vertexNormalAttribute, this.sphereNormalsPositionBuffer.itemSize,
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.rulerSphereNormalsPositionBuffer);
+    gl.vertexAttribPointer(this.shaderProgram.vertexNormalAttribute, this.rulerSphereNormalsPositionBuffer.itemSize,
         gl.FLOAT, false, 0, 0);
 
     mat4.set(this.mvMatrix, this.tempMat);
     mat4.translate(this.mvMatrix, [xLoc, yLoc, zLoc]);
     this.applyMatrixUniforms(gl);
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.sphereVertexIndexBuffer);
-    gl.drawElements(gl.TRIANGLES, this.sphereVertexIndexBuffer.numItems, gl.UNSIGNED_SHORT, 0);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.rulerSphereVertexIndexBuffer);
+    gl.drawElements(gl.TRIANGLES, this.rulerSphereVertexIndexBuffer.numItems, gl.UNSIGNED_SHORT, 0);
     mat4.set(this.tempMat, this.mvMatrix);
     this.applyMatrixUniforms(gl);
 };
@@ -1453,6 +1544,8 @@ papaya.viewer.ScreenSurface.prototype.findInitialRulerPoints = function (gl) {
     this.rulerPoints[3] = finalPoints[1][0];
     this.rulerPoints[4] = finalPoints[1][1];
     this.rulerPoints[5] = finalPoints[1][2];
+
+    console.log(this.rulerPoints)
 
     return true;
 };
